@@ -1,2 +1,14 @@
+# Pycache
+*__pycache__
+
+# VScode
+.vscode
+
+
+# A1
+
 # Data Files, large data
 A1/data
+
+# Results
+A1/results
