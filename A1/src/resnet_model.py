@@ -97,7 +97,8 @@ class Resnet(torch.nn.Module):
 class DataLoader():
     def __init__(self, x_addr, y_addr, batch_size, rand_seed = None, randomize = True, device = device):
         # Finding number of Data Samples
-        self.num_data = len(os.listdir(x_addr))
+        # self.num_data = len(os.listdir(x_addr))
+        self.num_data = 60
         
         # Randomizing if True
         np.random.seed(rand_seed)
@@ -143,7 +144,15 @@ class DataLoader():
         return X, Y
     
 
-def train(model, data_loader, num_epoch = 50, learning_rate = 1e-4):
+def train(model, data_loader, save_addr, num_epoch = 50, learning_rate = 1e-4, overwrite = False):
+    # Creating save folder
+    utils.create_dir(save_addr)
+    model_addr = os.path.join(save_addr, 'model')
+    utils.create_dir(model_addr)
+    loss_addr = os.path.join(save_addr, 'loss')
+    utils.create_dir(loss_addr)
+
+    # Parameters for training
     loss_fn = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate)
     start_time = time.time()
@@ -151,16 +160,33 @@ def train(model, data_loader, num_epoch = 50, learning_rate = 1e-4):
     for epoch in range(num_epoch):
         batch_ct = 0
         epoch_loss = 0
-        for x, y in data_loader:
-            y_pred = model(x)
-            loss = loss_fn(y_pred, y)
-            epoch_loss += loss.item()
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            batch_ct += 1
-            print(f"\tBatch: {batch_ct}\tLoss: {loss.item()}\tTotal Loss: {epoch_loss/batch_ct}\tTime: {time.time()-start_time}")
-        print(f"Epoch: {epoch+1}\tLoss: {epoch_loss/batch_ct}\tTime: {time.time() - start_time}")
+
+        # Loading previous model
+        epoch_addr = os.path.join(model_addr, f'{epoch}.pt')
+        epoch_loss_addr = os.path.join(loss_addr, f'{epoch}.pt')
+
+        if not overwrite and os.path.exists(epoch_addr) and os.path.exists(epoch_loss_addr):
+            model.load_state_dict(torch.load(epoch_addr))
+            epoch_loss = torch.load(epoch_loss_addr)
+
+            print(f"Epoch: {epoch} Loaded\t\tLoss: {epoch_loss}")
+        else:
+            # Training next epoch
+            for x, y in data_loader:
+                y_pred = model(x)
+                loss = loss_fn(y_pred, y)
+                epoch_loss += loss.item()
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                batch_ct += 1
+                print(f"\tBatch: {batch_ct}\tLoss: {round(loss.item(), 6)}\tTotal Loss: {round(epoch_loss/batch_ct, 6)}\tTime: {time.time()-start_time}")
+
+            # Saving model after each epoch
+            torch.save(model.state_dict(), epoch_addr)
+            torch.save(epoch_loss/batch_ct, epoch_loss_addr)
+
+            print(f"Epoch: {epoch}\tLoss: {round(epoch_loss/batch_ct, 6)}\tTime: {time.time() - start_time}")
 
 def set_seed(rand_seed):
     torch.manual_seed(rand_seed)
