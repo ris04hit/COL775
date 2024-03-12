@@ -1,6 +1,8 @@
 import torch
+import numpy as np
 import sys
 import os
+import time
 
 sys.path.append(os.path.abspath('../'))
 import src.utils as utils
@@ -13,17 +15,17 @@ class ResBlock(torch.nn.Module):
     def __init__(self, in_channel, out_channel, norm_func, kernel_size=3, stride=1):
         super(ResBlock, self).__init__()
         
-        self.conv1 = torch.nn.Conv2d(in_channel, in_channel, kernel_size, stride=1, padding=1)
-        self.norm1 = norm_func(in_channel)
+        self.conv1 = torch.nn.Conv2d(in_channel, in_channel, kernel_size, stride=1, padding=1, dtype=torch.float64)
+        self.norm1 = norm_func(in_channel, dtype=torch.float64)
         self.activation1 = torch.nn.ReLU()
         
-        self.conv2 = torch.nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding=1)
-        self.norm2 = norm_func(out_channel)
+        self.conv2 = torch.nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding=1, dtype=torch.float64)
+        self.norm2 = norm_func(out_channel, dtype=torch.float64)
         self.activation2 = torch.nn.ReLU()
         
         self.project = True if (in_channel != out_channel) or (stride != 1) else False
         if self.project:
-            self.conv_project = torch.nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding=1)
+            self.conv_project = torch.nn.Conv2d(in_channel, out_channel, kernel_size, stride, padding=1, dtype=torch.float64)
 
     def forward(self, x):
         res = x
@@ -37,7 +39,6 @@ class ResBlock(torch.nn.Module):
         x = self.activation2(x)
         
         return x
-        
 
 class Resnet(torch.nn.Module):
     def __init__(self, n, r, norm_func = torch.nn.BatchNorm2d):
@@ -47,8 +48,8 @@ class Resnet(torch.nn.Module):
         
         #Input
         self.input_layer = []
-        self.input_layer.append(torch.nn.Conv2d(3, 16, 3, 1, padding=1))
-        self.input_layer.append(self.norm(16))
+        self.input_layer.append(torch.nn.Conv2d(3, 16, 3, 1, padding=1, dtype=torch.float64))
+        self.input_layer.append(self.norm(16, dtype=torch.float64))
         self.input_layer.append(torch.nn.ReLU())
         self.input_layer = torch.nn.Sequential(*self.input_layer)
         
@@ -78,11 +79,10 @@ class Resnet(torch.nn.Module):
         
         # Output Layer
         self.output_layer = []
-        self.output_layer.append(torch.nn.Linear(64, r))
-        self.output_layer.append(torch.nn.Softmax(r))
+        self.output_layer.append(torch.nn.Linear(64, r, dtype=torch.float64))
+        self.output_layer.append(torch.nn.Softmax(1))
         self.output_layer = torch.nn.Sequential(*self.output_layer)
 
-        
     def forward(self, x):
         x = self.input_layer(x)
         x = self.hidden_layer1(x)
@@ -94,6 +94,73 @@ class Resnet(torch.nn.Module):
         
         return x
 
+class DataLoader():
+    def __init__(self, x_addr, y_addr, batch_size, rand_seed = None, randomize = True, device = device):
+        # Finding number of Data Samples
+        self.num_data = len(os.listdir(x_addr))
+        
+        # Randomizing if True
+        np.random.seed(rand_seed)
+        self.order = np.arange(self.num_data)
+        
+        # Assigning Class Variables
+        self.x_addr = x_addr
+        self.y_addr = y_addr
+        self.batch_size = batch_size
+        self.device = device
+        self.randomize = randomize
+        
+    def __iter__(self):
+        # Initializing index
+        self.ind = 0
+        if self.randomize:
+            np.random.shuffle(self.order)
+        return self
+    
+    def __next__(self):
+        # Checking stop condition
+        if self.ind >= self.num_data:
+            raise StopIteration
+        
+        X, Y = [], []
+        for i in range(self.batch_size):
+            # Loading X
+            x = torch.load(os.path.join(self.x_addr, f'{self.order[self.ind]}.pt'))
+            X.append(x.permute(2, 0, 1))    # Channel is first dimension
+            
+            # Loading Y
+            y = torch.load(os.path.join(self.y_addr, f'{self.order[self.ind]}.pt'))
+            Y.append(y)
+            
+            # Updating index
+            self.ind += 1
+            if self.ind == self.num_data:
+                break
+        
+        # Returning data
+        X = torch.stack(X).to(self.device)
+        Y = torch.stack(Y).to(self.device)
+        return X, Y
+    
+
+def train(model, data_loader, num_epoch = 50, learning_rate = 1e-4):
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate)
+    start_time = time.time()
+    
+    for epoch in range(num_epoch):
+        batch_ct = 0
+        epoch_loss = 0
+        for x, y in data_loader:
+            y_pred = model(x)
+            loss = loss_fn(y_pred, y)
+            epoch_loss += loss.item()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            batch_ct += 1
+            print(f"\tBatch: {batch_ct}\tLoss: {loss.item()}\tTotal Loss: {epoch_loss/batch_ct}\tTime: {time.time()-start_time}")
+        print(f"Epoch: {epoch+1}\tLoss: {epoch_loss/batch_ct}\tTime: {time.time() - start_time}")
 
 def set_seed(rand_seed):
     torch.manual_seed(rand_seed)
