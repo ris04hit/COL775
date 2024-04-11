@@ -26,3 +26,9 @@ A1/submission
 
 # Cache
 *.vector_cache
+
+
+# A2
+
+# Data Files, Large Data
+A2/kaggle/input
