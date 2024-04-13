@@ -32,3 +32,9 @@ A1/submission
 
 # Data Files, Large Data
 A2/kaggle/input
+
+# Results
+A2/kaggle/working*/results
+
+# Temp files
+A2/kaggle/working*/temp
