@@ -38,3 +38,13 @@ A2/kaggle/working*/results
 
 # Temp files
 A2/kaggle/working*/temp
+
+# Unet source code and model
+A2/Kaggle/working*/u-net-release
+
+# Submission
+A2/submission/
+
+# sample images for submission
+A2/sample_img
+A2/out_img
